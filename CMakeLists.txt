@@ -1,0 +1,38 @@
+cmake_minimum_required(VERSION 3.2)
+project(crypto)
+
+# SET(OPENSSL_DIR /home/psf/work_space/openssl-1.1.1v)
+# SET(OPENSSL_DIR /home/psf/work_space/openssl-1.1.0l)
+# SET(OPENSSL_DIR ./openssl-3.0.10)
+SET(OPENSSL_LIB ${CMAKE_CURRENT_SOURCE_DIR}/lib_x86)
+
+INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/include_x86
+)
+
+
+# Specify the cross compiler
+# SET(TOOLCHAIN_PATH $ENV{HOME}/work_space/x3m/x3mKernel/toolchain/gcc-ubuntu-9.3.0-2020.03-x86_64-aarch64-linux-gnu)
+# SET(CROSS_COMPILE ${TOOLCHAIN_PATH}/bin/aarch64-linux-gnu-)
+# SET(CMAKE_SYSTEM_NAME Linux)
+# SET(CMAKE_C_COMPILER ${CROSS_COMPILE}gcc)
+# SET(CMAKE_CXX_COMPILER ${CROSS_COMPILE}g++)
+
+
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
+# SET(CMAKE_BUILD_TYPE "Release")
+SET(CMAKE_BUILD_TYPE "Debug")
+
+
+LINK_DIRECTORIES(
+    # ${TOOLCHAIN_PATH}/lib/x86_64-linux-gnu
+    ${ROOFS_DIR}/usr/lib
+    ${OPENSSL_LIB}
+)
+
+file(GLOB_RECURSE SRCS ${CMAKE_CURRENT_SOURCE_DIR}/crypt.cpp ${CMAKE_CURRENT_SOURCE_DIR}/src/cJSON.c)
+
+add_executable(${PROJECT_NAME} ${SRCS})
+target_link_libraries(${PROJECT_NAME} ${CMAKE_DL_LIBS} -lcrypto -lssl -lpthread -lm)
+# target_link_libraries(${PROJECT_NAME} ${CMAKE_DL_LIBS} -lcrypto -lssl)
+# target_link_libraries(${PROJECT_NAME} ${OPENSSL_LIBRARY} ${CRYPTO_LIBRARY})
+# set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static")
