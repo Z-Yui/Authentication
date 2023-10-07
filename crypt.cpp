@@ -9,8 +9,8 @@
 #include <sstream>
 #include <sys/stat.h> // 获取文件大小
 
-#include "crypt.h"
 #include "cJSON.h"
+#include "crypt.h"
 
 // using namespace std;
 
@@ -106,6 +106,7 @@ std::string RsaEncrypt(const std::string &clear_text, const std::string &key, bo
         ERR_error_string(err, err_msg); // 格式：error:errId:库:原因
         printf("err msg: err:%ld, msg:%s\n", err, err_msg);
         BIO_free_all(key_bio);
+        RSA_free(rsa);
         return encrypt_text;
     }
 
@@ -190,6 +191,7 @@ std::string RsaDecrypt(const std::string &cipher_text, const std::string &key, b
         ERR_error_string(err, err_msg); // 格式：error:errId:库:原因
         printf("err msg: err:%ld, msg:%s\n", err, err_msg);
         BIO_free_all(keybio);
+        RSA_free(rsa);
         return decrypt_text;
     }
     int key_len = RSA_size(rsa);
@@ -369,7 +371,8 @@ int RSASign(const std::string &message, std::string &dgst_sign, const std::strin
     unsigned char buf[KEY_LENGTH / 8] = {0};
     int ret = 0;
     unsigned int out_len = sizeof(buf);
-    rsa = PEM_read_bio_RSAPrivateKey(prikeybio, &rsa, NULL, NULL);
+    std::unique_ptr<RSA, void (*)(RSA *)> ursa(PEM_read_bio_RSAPrivateKey(prikeybio, &rsa, NULL, NULL),
+                                               [](RSA *rsa) { RSA_free(rsa); });
     if (!rsa)
     {
         unsigned long err = ERR_get_error();
@@ -393,7 +396,7 @@ int RSASign(const std::string &message, std::string &dgst_sign, const std::strin
         ret = 0;
     }
     BIO_free_all(prikeybio);
-    RSA_free(rsa);
+    // RSA_free(rsa);
     return ret;
 }
 
@@ -408,7 +411,8 @@ int RSAVerify(const std::string &message, const std::string &dgst_sign, const st
 
     SHA256((unsigned char *)message.data(), message.size(), md);
     memcpy(buf, dgst_sign.data(), KEY_LENGTH / 8);
-    rsa = PEM_read_bio_RSA_PUBKEY(pubkeybio, &rsa, NULL, NULL);
+    std::unique_ptr<RSA, void (*)(RSA *)> ursa(PEM_read_bio_RSA_PUBKEY(pubkeybio, &rsa, NULL, NULL),
+                                               [](RSA *rsa) { RSA_free(rsa); });
     if (!rsa)
     {
         unsigned long err = ERR_get_error();
@@ -418,6 +422,7 @@ int RSAVerify(const std::string &message, const std::string &dgst_sign, const st
         BIO_free_all(pubkeybio);
         return -1;
     }
+
     ret = RSA_verify(NID_sha256, md, SHA256_DIGEST_LENGTH, buf, out_len, rsa);
 
     if (ret != 1)
@@ -431,7 +436,7 @@ int RSAVerify(const std::string &message, const std::string &dgst_sign, const st
         ret = 0;
     }
     BIO_free_all(pubkeybio);
-    RSA_free(rsa);
+    // RSA_free(rsa);
     return ret;
 }
 
