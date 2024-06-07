@@ -83,239 +83,94 @@ char *base64_decode(const char *input, int length)
 }
 
 /*-------------------------RSA256 算法加解密实现--------------------------*/
-// 公私钥加密
-std::string RsaEncrypt(const std::string &clear_text, const std::string &key, bool is_BT, bool isPub)
+
+int RsaEncrypt(const std::string &clear_text, const std::string &key, std::string &cipher_mesg)
 {
+    int ret = 0;
     std::string encrypt_text;
-    BIO *key_bio = BIO_new_mem_buf((unsigned char *)key.c_str(), -1);
-    RSA *rsa = RSA_new();
-    if (isPub)
-    {
-        // 第1种格式的公钥
-        // rsa = PEM_read_bio_RSAPublicKey(key_bio, &rsa, NULL, NULL);
-        // 这里使用第2种格式的公钥
-        rsa = PEM_read_bio_RSA_PUBKEY(key_bio, &rsa, NULL, NULL);
-    }
-    else
-        rsa = PEM_read_bio_RSAPrivateKey(key_bio, &rsa, NULL, NULL);
-
-    if (!rsa)
-    {
-        unsigned long err = ERR_get_error();
-        char err_msg[1024] = {0};
-        ERR_error_string(err, err_msg); // 格式：error:errId:库:原因
-        printf("err msg: err:%ld, msg:%s\n", err, err_msg);
-        BIO_free_all(key_bio);
-        RSA_free(rsa);
-        return encrypt_text;
-    }
-
-    // 获取RSA单次可以处理的数据的最大长度
-    int key_len = RSA_size(rsa);
-
-    // 申请内存：存贮加密后的密文数据
-    char *text = new char[key_len + 1];
-    memset(text, 0, key_len + 1);
-    int ret = 0;
-    if (!is_BT)
-    { // 数据长度小于RSA单次处理数据块的最大长度
-        // 对数据进行加密（返回值是加密后的数据的长度）
-        if (isPub)
-            ret = RSA_public_encrypt(clear_text.length(), (const unsigned char *)clear_text.c_str(),
-                                     (unsigned char *)text, rsa, RSA_PKCS1_PADDING);
-        else
-            ret = RSA_private_encrypt(clear_text.length(), (const unsigned char *)clear_text.c_str(),
-                                      (unsigned char *)text, rsa, RSA_PKCS1_PADDING);
-
-        if (ret >= 0)
-            encrypt_text = std::string(text, ret);
-    }
-    else
-    {                                 // 数据长度大于RSA单次处理数据块的最大长度
-        int block_len = key_len - 11; // 因为填充方式为RSA_PKCS1_PADDING, 所以要在key_len基础上减去11
-        int pos = 0;
-        std::string sub_str;
-        // 对数据进行分段加密（返回值是加密后数据的长度）
-        while (pos < clear_text.length())
-        {
-            int ret_ = 0;
-            sub_str = clear_text.substr(pos, block_len);
-            memset(text, 0, key_len + 1);
-            if (isPub)
-                ret_ = RSA_public_encrypt(sub_str.length(), (const unsigned char *)sub_str.c_str(),
-                                          (unsigned char *)text, rsa, RSA_PKCS1_PADDING);
-            else
-                ret_ = RSA_private_encrypt(sub_str.length(), (const unsigned char *)sub_str.c_str(),
-                                           (unsigned char *)text, rsa, RSA_PKCS1_PADDING);
-
-            if (ret > 0)
-            {
-                encrypt_text.append(std::string(text, ret));
-                ret += ret_;
-            }
-            else if (!ret)
-            {
-                ret = ret_;
-                encrypt_text.append(std::string(text, ret));
-            }
-
-            pos += block_len;
-        }
-    }
-    assert(encrypt_text.size() == ret);
-    // 释放内存
-    delete[] text;
-    BIO_free_all(key_bio);
-    RSA_free(rsa);
-    CRYPTO_cleanup_all_ex_data();
-    return encrypt_text;
-}
-// 公私钥解密
-std::string RsaDecrypt(const std::string &cipher_text, const std::string &key, bool is_BT, bool isPub)
-{
-    std::string decrypt_text;
     BIO *keybio = BIO_new_mem_buf((unsigned char *)key.c_str(), -1);
-    RSA *rsa = RSA_new();
-    if (isPub)
-        rsa = PEM_read_bio_RSAPrivateKey(keybio, &rsa, NULL, NULL);
-    else
-        // 第1种格式的公钥
-        // rsa = PEM_read_bio_RSAPublicKey(keybio, &rsa, NULL, NULL);
-        // 这里使用第2种格式的公钥进行解密
-        rsa = PEM_read_bio_RSA_PUBKEY(keybio, &rsa, NULL, NULL);
-
+    RSA *rsa = PEM_read_bio_RSA_PUBKEY(keybio, NULL, NULL, NULL);
+    int key_len = RSA_size(rsa);
+    int block_len = key_len - RSA_PKCS1_PADDING_SIZE;
     if (!rsa)
     {
-        unsigned long err = ERR_get_error();
-        char err_msg[1024] = {0};
-        ERR_error_string(err, err_msg); // 格式：error:errId:库:原因
-        printf("err msg: err:%ld, msg:%s\n", err, err_msg);
         BIO_free_all(keybio);
-        RSA_free(rsa);
-        return decrypt_text;
+        return -1;
     }
-    int key_len = RSA_size(rsa);
     char *text = new char[key_len + 1];
-    memset(text, 0, key_len + 1);
-    int ret = 0;
-    if (!is_BT)
+    memset(text, 0, sizeof(char) * (key_len + 1));
+
+    int pos = 0;
+    std::string sub_str;
+    while (pos < clear_text.length())
     {
-        // 对密文进行解密
-        if (isPub)
-            ret = RSA_private_decrypt(cipher_text.length(), (const unsigned char *)cipher_text.c_str(),
-                                      (unsigned char *)text, rsa, RSA_PKCS1_PADDING);
-        else
-            ret = RSA_public_decrypt(cipher_text.length(), (const unsigned char *)cipher_text.c_str(),
-                                     (unsigned char *)text, rsa, RSA_PKCS1_PADDING);
-        if (ret >= 0)
-            decrypt_text.append(std::string(text, ret));
-    }
-    else
-    {
-        std::string sub_str;
-        int pos = 0;
-        // 对密文进行分段解密
-        while (pos < cipher_text.length())
+        int ret_ = 0;
+        sub_str = clear_text.substr(pos, block_len);
+        memset(text, 0, sizeof(char) * (key_len + 1));
+
+        ret_ = RSA_public_encrypt(sub_str.length(), (const unsigned char *)sub_str.c_str(), (unsigned char *)text, rsa,
+                                  RSA_PKCS1_PADDING);
+        if (ret > 0)
         {
-            sub_str = cipher_text.substr(pos, key_len);
-            memset(text, 0, key_len + 1);
-            if (isPub)
-                ret = RSA_private_decrypt(sub_str.length(), (const unsigned char *)sub_str.c_str(),
-                                          (unsigned char *)text, rsa, RSA_PKCS1_PADDING);
-            else
-                ret = RSA_public_decrypt(sub_str.length(), (const unsigned char *)sub_str.c_str(),
-                                         (unsigned char *)text, rsa, RSA_PKCS1_PADDING);
-            if (ret >= 0)
-            {
-                decrypt_text.append(std::string(text, ret));
-                // printf("pos:%d, sub: %s\n", pos, text);
-                pos += key_len;
-            }
+            encrypt_text.append(std::string(text, ret));
+            ret += ret_;
         }
+        else if (!ret)
+        {
+            ret = ret_;
+            encrypt_text.append(std::string(text, ret));
+        }
+
+        pos += block_len;
     }
+
+    memcpy(cipher_mesg.data(), encrypt_text.data(), encrypt_text.size());
     delete[] text;
     BIO_free_all(keybio);
     RSA_free(rsa);
-
-    return decrypt_text;
+    CRYPTO_cleanup_all_ex_data();
+    return 0;
 }
-// 生成秘钥对
-void GenerateRSAKey(std::string &out_pub_key, std::string &out_pri_key, char *name)
+
+int RsaDecrypt(const std::string &cipher_text, const std::string &key, std::string &plain_mesg)
 {
-    size_t pri_len = 0;
-    size_t pub_len = 0;
-    char *pri_key = nullptr;
-    char *pub_key = nullptr;
+    std::string decrypt_text;
+    BIO *keybio = BIO_new_mem_buf((unsigned char *)key.c_str(), -1);
+    RSA *rsa = PEM_read_bio_RSAPrivateKey(keybio, NULL, NULL, NULL);
+    if (!rsa)
+    {
+        BIO_free_all(keybio);
+        return -1;
+    }
+    int key_len = RSA_size(rsa);
+    char *text = new char[key_len + 1];
+    memset(text, 0, sizeof(char) * (key_len + 1));
+    int ret = 0;
 
-    // 生成密钥对
-    RSA *keypair = RSA_generate_key(KEY_LENGTH, RSA_F4, NULL, NULL);
+    std::string sub_str;
+    int pos = 0;
+    while (pos < cipher_text.length())
+    {
+        sub_str = cipher_text.substr(pos, key_len);
+        memset(text, 0, key_len + 1);
 
-    BIO *pri = BIO_new(BIO_s_mem());
-    BIO *pub = BIO_new(BIO_s_mem());
+        ret = RSA_private_decrypt(sub_str.length(), (const unsigned char *)sub_str.c_str(), (unsigned char *)text, rsa,
+                                  RSA_PKCS1_PADDING);
 
-    // 生成私钥
-    PEM_write_bio_RSAPrivateKey(pri, keypair, NULL, NULL, 0, NULL, NULL);
-    // 生成第1种格式的公钥
-    // PEM_write_bio_RSAPublicKey(pub, keypair);
-    // 生成第2种格式的公钥（此处代码中使用这种）
-    PEM_write_bio_RSA_PUBKEY(pub, keypair);
+        if (ret >= 0)
+        {
+            decrypt_text.append(std::string(text, ret));
+            pos += key_len;
+        }
+    }
 
-    // 获取长度
-    pri_len = BIO_pending(pri);
-    pub_len = BIO_pending(pub);
-
-    // 密钥对读取到字符串
-    pri_key = (char *)malloc(pri_len + 1);
-    pub_key = (char *)malloc(pub_len + 1);
-
-    BIO_read(pri, pri_key, pri_len);
-    BIO_read(pub, pub_key, pub_len);
-
-    pri_key[pri_len] = '\0';
-    pub_key[pub_len] = '\0';
-
-    out_pub_key = pub_key;
-    out_pri_key = pri_key;
-
-    // // 将公钥写入文件
-    // char pubfile_name[50] = PUB_KEY_FILE;
-    // strcat(pubfile_name, name);
-    // strcat(pubfile_name, ".pem");
-
-    // char prifile_name[50] = PRI_KEY_FILE;
-    // strcat(prifile_name, name);
-    // strcat(prifile_name, ".pem");
-
-    // std::cout << "pubfile name = " << pubfile_name << std::endl;
-    // std::cout << "prifile name = " << prifile_name << std::endl;
-    // // getchar();
-    // std::ofstream pub_file(pubfile_name, std::ios::out);
-    // if (!pub_file.is_open())
-    // {
-    //     perror("pub key file open fail:");
-    //     return;
-    // }
-    // pub_file << pub_key;
-    // pub_file.close();
-
-    // // 将私钥写入文件
-    // std::ofstream pri_file(prifile_name, std::ios::out);
-    // if (!pri_file.is_open())
-    // {
-    //     perror("pri key file open fail:");
-    //     return;
-    // }
-    // pri_file << pri_key;
-    // pri_file.close();
-
-    // 释放内存
-    RSA_free(keypair);
-    BIO_free_all(pub);
-    BIO_free_all(pri);
-
-    free(pri_key);
-    free(pub_key);
+    plain_mesg = decrypt_text;
+    delete[] text;
+    BIO_free_all(keybio);
+    RSA_free(rsa);
+    return 0;
 }
+
 // 从文件中获取密钥
 /*
 void ReadRSAFromPEM_1()
@@ -366,19 +221,14 @@ void ReadRSAFromPEM_2(std::string &pubkey, std::string &prikey)
 int RSASign(const std::string &message, std::string &dgst_sign, const std::string &prikey)
 {
     BIO *prikeybio = BIO_new_mem_buf((unsigned char *)prikey.data(), -1);
-    RSA *rsa = RSA_new();
     unsigned char md[SHA256_DIGEST_LENGTH];
     unsigned char buf[KEY_LENGTH / 8] = {0};
     int ret = 0;
     unsigned int out_len = sizeof(buf);
-    std::unique_ptr<RSA, void (*)(RSA *)> ursa(PEM_read_bio_RSAPrivateKey(prikeybio, &rsa, NULL, NULL),
-                                               [](RSA *rsa) { RSA_free(rsa); });
+    RSA *rsa = PEM_read_bio_RSAPrivateKey(prikeybio, NULL, NULL, NULL);
+
     if (!rsa)
     {
-        unsigned long err = ERR_get_error();
-        char err_msg[1024] = {0};
-        ERR_error_string(err, err_msg); // 格式：error:errId:库:原因
-        printf("err msg: err:%ld, msg:%s\n", err, err_msg);
         BIO_free_all(prikeybio);
         return -1;
     }
@@ -387,7 +237,6 @@ int RSASign(const std::string &message, std::string &dgst_sign, const std::strin
 
     if (ret != 1)
     {
-        printf("RSA_sign err !!! \n");
         ret = -1;
     }
     else
@@ -396,29 +245,23 @@ int RSASign(const std::string &message, std::string &dgst_sign, const std::strin
         ret = 0;
     }
     BIO_free_all(prikeybio);
-    // RSA_free(rsa);
+    RSA_free(rsa);
     return ret;
 }
 
 int RSAVerify(const std::string &message, const std::string &dgst_sign, const std::string &pubkey)
 {
-    BIO *pubkeybio = BIO_new_mem_buf((unsigned char *)pubkey.data(), -1);
-    RSA *rsa = RSA_new();
-    unsigned char buf[KEY_LENGTH / 8] = {0};
-    unsigned char md[SHA256_DIGEST_LENGTH] = {0};
-    unsigned int out_len = sizeof(buf);
     int ret = 0;
-
+    unsigned char buf[KEY_LENGTH / 8] = {0};
+    unsigned char md[SHA256_DIGEST_LENGTH];
+    unsigned int out_len = sizeof(buf);
+    BIO *pubkeybio = BIO_new_mem_buf((const char *)pubkey.data(), -1);
     SHA256((unsigned char *)message.data(), message.size(), md);
     memcpy(buf, dgst_sign.data(), KEY_LENGTH / 8);
-    std::unique_ptr<RSA, void (*)(RSA *)> ursa(PEM_read_bio_RSA_PUBKEY(pubkeybio, &rsa, NULL, NULL),
-                                               [](RSA *rsa) { RSA_free(rsa); });
+    RSA *rsa = PEM_read_bio_RSA_PUBKEY(pubkeybio, NULL, NULL, NULL);
+
     if (!rsa)
     {
-        unsigned long err = ERR_get_error();
-        char err_msg[1024] = {0};
-        ERR_error_string(err, err_msg); // 格式：error:errId:库:原因
-        printf("err msg: err:%ld, msg:%s\n", err, err_msg);
         BIO_free_all(pubkeybio);
         return -1;
     }
@@ -427,19 +270,106 @@ int RSAVerify(const std::string &message, const std::string &dgst_sign, const st
 
     if (ret != 1)
     {
-        printf("RSA_verify failed !!! \n");
         ret = -1;
     }
     else
     {
-        printf("RSA_verify success !!! \n");
         ret = 0;
     }
     BIO_free_all(pubkeybio);
-    // RSA_free(rsa);
+    RSA_free(rsa);
     return ret;
 }
 
+#if 0
+int ReadKey_hash(int flag, int stage, const char *file_name, std::string &key, bool is_random)
+{
+    std::string real_path = {0};
+    switch (stage)
+    {
+    case CREATE_SESSION:
+    case AUTHEN_BOARD:
+        switch (flag)
+        {
+        case CAM_FIRMWARE_VERIFY_LEVEL_0: // restore
+        case CAM_FIRMWARE_VERIFY_LEVEL_1: // upfw
+            real_path = STAGE1_LEVEL_1_KEY_FILE;
+            break;
+        case CAM_FIRMWARE_VERIFY_LEVEL_2: // ADB
+            real_path = STAGE1_LEVEL_2_KEY_FILE;
+            break;
+        case CAM_FIRMWARE_VERIFY_LEVEL_3: // FAB
+            real_path = STAGE1_LEVEL_3_KEY_FILE;
+            break;
+        default:
+            PD_ERROR("The flag is wrong, when readKey through hashfile!!!\n");
+            return ERR_VERIFY_WRONG_FLAG;
+        }
+        break;
+    case FINAL_AUTHEN_HOST:
+        switch (flag)
+        {
+        case CAM_FIRMWARE_VERIFY_LEVEL_1: // UPFW
+            real_path = STAGE2_LEVEL_1_KEY_FILE;
+            break;
+        case CAM_FIRMWARE_VERIFY_LEVEL_2: // ADB
+            real_path = STAGE2_LEVEL_2_KEY_FILE;
+            break;
+        case CAM_FIRMWARE_VERIFY_LEVEL_3: // FAB
+            real_path = STAGE2_LEVEL_3_KEY_FILE;
+            break;
+        default:
+            PD_ERROR("The flag is wrong, when readKey through hashfile!!!\n");
+            return ERR_VERIFY_WRONG_FLAG;
+        }
+        break;
+    default:
+        PD_ERROR("Wrong stage!!!\n");
+        return ERR_VERIFY_WRONG_STAGE;
+        break;
+    }
+    if (is_random)
+    {
+        int key_num = 0, num = 0;
+        srand((unsigned)time(NULL));
+        for (const auto &entry : std::filesystem::directory_iterator(real_path))
+            key_num++;
+        num = (rand() % key_num);
+
+        for (const auto &entry : std::filesystem::directory_iterator(real_path))
+        {
+            if (!entry.is_regular_file())
+                continue;
+            if (num > 0)
+                num--;
+            else
+            {
+                std::ifstream keyfile(entry.path());
+                std::string content((std::istreambuf_iterator<char>(keyfile)), std::istreambuf_iterator<char>());
+                key = content;
+                keyfile.close();
+                break;
+            }
+        }
+    }
+    else
+    {
+        real_path += std::string(file_name);
+        std::ifstream infile(real_path, std::ios::in);
+        if (!infile)
+        {
+            PD_ERROR("Can't read key from pemfile path:%s!!!\n", real_path.data());
+            return ERR_VERIFY_READ_KEY_FAIL;
+        }
+        std::string key_((std::istreambuf_iterator<char>(infile)), (std::istreambuf_iterator<char>()));
+        key = key_;
+        infile.close();
+    }
+
+    return 0;
+}
+
+#endif
 int ReadKey(std::string &key, const char *path)
 {
     std::ifstream infile(path, std::ios::in);
@@ -453,42 +383,6 @@ int ReadKey(std::string &key, const char *path)
     key = key_;
     infile.close();
     return 0;
-}
-
-void testRsa()
-{
-    using namespace std;
-    string pubkey;
-    string prikey;
-    string encrypt_text;
-    string decrypt_text;
-    bool is_BT = false;
-    bool isPub_Encrypt = true;
-
-    // GenerateRSAKey(pubkey, prikey);
-    // ReadRSAFromPEM_2(pubkey, prikey);
-    // getchar();
-    // cout << "公钥为：" << pubkey << endl;
-    // cout << "私钥为：" << prikey << endl;
-
-    const string plain_text = "x3m okuloc1需要加密的消息123134564616456456456465456";
-    // cout << "plain_text: " << plain_text << endl;
-
-    if (isPub_Encrypt)
-    {
-        // 密文（二进制数据）
-        encrypt_text = RsaEncrypt(plain_text, pubkey, is_BT, true);
-        // 顺利的话，解密后的文字和原文是一致的
-        decrypt_text = RsaDecrypt(encrypt_text, prikey, is_BT, true);
-    }
-    else
-    {
-        encrypt_text = RsaEncrypt(plain_text, prikey, is_BT, false);
-        decrypt_text = RsaDecrypt(encrypt_text, pubkey, is_BT, false);
-    }
-
-    // cout << "encrypt_text: " << encrypt_text << endl;
-    // cout << "decrypt_text: " << decrypt_text << endl;
 }
 
 /*-------------------------SHA256 算法加密实现--------------------------*/
@@ -701,59 +595,112 @@ int Add_keypairInfo(const char *file_name, const char *stage_type, const char *k
     return 0;
 }
 
+// 生成秘钥对
+void GenerateRSAKey(std::string &out_pub_key, std::string &out_pri_key, std::string name)
+{
+    size_t pri_len = 0;
+    size_t pub_len = 0;
+    char *pri_key = nullptr;
+    char *pub_key = nullptr;
+
+    // 生成密钥对
+    RSA *keypair = RSA_generate_key(KEY_LENGTH, RSA_F4, NULL, NULL);
+
+    BIO *pri = BIO_new(BIO_s_mem());
+    BIO *pub = BIO_new(BIO_s_mem());
+
+    // 生成私钥
+    PEM_write_bio_RSAPrivateKey(pri, keypair, NULL, NULL, 0, NULL, NULL);
+    // 生成第1种格式的公钥
+    // PEM_write_bio_RSAPublicKey(pub, keypair);
+    // 生成第2种格式的公钥（此处代码中使用这种）
+    PEM_write_bio_RSA_PUBKEY(pub, keypair);
+
+    // 获取长度
+    pri_len = BIO_pending(pri);
+    pub_len = BIO_pending(pub);
+
+    // 密钥对读取到字符串
+    pri_key = (char *)malloc(pri_len + 1);
+    pub_key = (char *)malloc(pub_len + 1);
+
+    BIO_read(pri, pri_key, pri_len);
+    BIO_read(pub, pub_key, pub_len);
+
+    pri_key[pri_len] = '\0';
+    pub_key[pub_len] = '\0';
+
+    out_pub_key = pub_key;
+    out_pri_key = pri_key;
+
+    // 将公钥写入文件
+    std::string pubfile_name = name + "pub/";
+    {
+        std::string encodedStr;
+        std::string encodedHexStr;
+        sha256(std::string(pub_key), encodedStr, encodedHexStr);
+        pubfile_name += encodedHexStr;
+        pubfile_name += ".pem";
+    }
+    std::string prifile_name = name + "pri/";
+    {
+        std::string encodedStr;
+        std::string encodedHexStr;
+        sha256(std::string(pri_key), encodedStr, encodedHexStr);
+        prifile_name += encodedHexStr;
+        prifile_name += ".pem";
+    }
+
+    std::cout << "pubfile name = " << pubfile_name << std::endl;
+    std::cout << "prifile name = " << prifile_name << std::endl;
+    // getchar();
+
+    std::ofstream pub_file(pubfile_name, std::ios::out);
+    if (!pub_file.is_open())
+    {
+        perror("pub key file open fail:");
+        return;
+    }
+    pub_file << pub_key;
+    pub_file.close();
+
+    // 将私钥写入文件
+    std::ofstream pri_file(prifile_name, std::ios::out);
+    if (!pri_file.is_open())
+    {
+        perror("pri key file open fail:");
+        return;
+    }
+    pri_file << pri_key;
+    pri_file.close();
+
+    // 释放内存
+    RSA_free(keypair);
+    BIO_free_all(pub);
+    BIO_free_all(pri);
+
+    free(pri_key);
+    free(pub_key);
+}
+
 int Hashkey_json()
 {
     using namespace std;
     string pubkey, prikey;
     string hashname = {0};
-    string hashnameHex_pub = {0};
-    string hashnameHex_pri = {0};
+
     string command_type = "ADB";
     string stage_type = "stage_1";
 
-    char json_file[30] = "./authen_key.json";
+    // char json_file[30] = "./authen_key.json";
     int begin = 0;
-    for (size_t i = begin; i < 20 + begin; i++)
+    std::string file_path = STAGE2_LEVEL2_KEY_FILE;
+    for (size_t i = 0; i < 20 + begin; i++)
     {
-        string names = command_type + std::string("_") + stage_type + std::string("_");
-        char pubfile_name[100] = STAGE1_ADB_KEY_FILE;
-        char prifile_name[100] = STAGE1_ADB_KEY_FILE;
-        names += to_string(i);
-        cout << "names = " << names << endl;
-        GenerateRSAKey(pubkey, prikey, names.data());
+        GenerateRSAKey(pubkey, prikey, file_path);
 
-        sha256(pubkey, hashname, hashnameHex_pub);
-        sha256(prikey, hashname, hashnameHex_pri);
-        strcat(pubfile_name, "pub/");
-        // 公钥名字为私钥的hash、私钥名字为公钥的hash
-        strcat(pubfile_name, hashnameHex_pri.data());
-        strcat(pubfile_name, ".pem");
-        cout << "pubfile_name: " << pubfile_name << endl;
-
-        strcat(prifile_name, "pri/");
-        // 公钥名字为私钥的hash、私钥名字为公钥的hash
-        strcat(prifile_name, hashnameHex_pub.data());
-        strcat(prifile_name, ".pem");
-        cout << "prifile_name: " << prifile_name << endl;
-        // getchar();
-        std::ofstream pub_file(pubfile_name, ios::out);
-        std::ofstream pri_file(prifile_name, ios::out);
-        if (!pub_file.is_open())
-        {
-            perror("pub key file open fail:");
-            return -1;
-        }
-        if (!pri_file.is_open())
-        {
-            perror("pri key file open fail:");
-            return -1;
-        }
-        pub_file << pubkey;
-        pri_file << prikey;
-        pub_file.close();
-        pri_file.close();
-        Add_keypairInfo(json_file, stage_type.data(), command_type.data(), hashnameHex_pub.data(),
-                        hashnameHex_pri.data());
+        // Add_keypairInfo(json_file, stage_type.data(), command_type.data(), hashnameHex_pub.data(),
+        //                 hashnameHex_pri.data());
         // getchar();
     }
     return 0;
@@ -768,13 +715,13 @@ int ReadKey_hash(char flag, int stage, const char *file_name, std::string &key)
         switch (flag)
         {
         case 1: // upfw
-            real_path = std::string(STAGE1_UPFW_KEY_FILE);
+            real_path = std::string(STAGE1_LEVEL1_KEY_FILE);
             break;
         case 2: // ADB
-            real_path = std::string(STAGE1_ADB_KEY_FILE);
+            real_path = std::string(STAGE1_LEVEL2_KEY_FILE);
             break;
         case 3: // FAB
-            real_path = std::string(STAGE1_FAB_KEY_FILE);
+            real_path = std::string(STAGE1_LEVEL3_KEY_FILE);
             break;
         default:
             printf("The flag is wrong, when readKey through hashfile!!!\n");
@@ -785,13 +732,13 @@ int ReadKey_hash(char flag, int stage, const char *file_name, std::string &key)
         switch (flag)
         {
         case 1: // UPFW
-            real_path = std::string(STAGE2_UPFW_KEY_FILE);
+            real_path = std::string(STAGE2_LEVEL1_KEY_FILE);
             break;
         case 2: // ADB
-            real_path = std::string(STAGE2_ADB_KEY_FILE);
+            real_path = std::string(STAGE2_LEVEL2_KEY_FILE);
             break;
         case 3: // FAB
-            real_path = std::string(STAGE2_FAB_KEY_FILE);
+            real_path = std::string(STAGE2_LEVEL3_KEY_FILE);
             break;
         default:
             printf("The flag is wrong, when readKey through hashfile!!!\n");
@@ -956,9 +903,9 @@ int random_key(std::string &host_key, const std::string fdir)
 int stage2_dict(const std::string fdir)
 {
     std::string file_name = fdir + std::string("stage_2.dict");
-    std::string upfwkeys = fdir + std::string("upfw/pri/");
-    std::string adbkeys = fdir + std::string("adb/pri/");
-    std::string fabkeys = fdir + std::string("fab/pri/");
+    std::string upfwkeys = fdir + std::string("level_1/pri/");
+    std::string adbkeys = fdir + std::string("level_2/pri/");
+    std::string fabkeys = fdir + std::string("level_3/pri/");
 
     std::string plain_mesg(PLAINTEXT);
     std::string Cipher_mesg(KEY_LENGTH / 8, '0');
@@ -971,7 +918,7 @@ int stage2_dict(const std::string fdir)
     char mdStr[KEY_LENGTH / 4] = {0};
 
     std::ofstream outfile(file_name, std::ios::out);
-    outfile << "upfw" << std::endl;
+    outfile << "level_1" << std::endl;
     for (const auto &entry : std::filesystem::directory_iterator(upfwkeys))
     {
         if (!entry.is_regular_file())
@@ -991,7 +938,7 @@ int stage2_dict(const std::string fdir)
 
         keyfile.close();
     }
-    outfile << "adb" << std::endl;
+    outfile << "level_2" << std::endl;
     for (const auto &entry : std::filesystem::directory_iterator(adbkeys))
     {
         if (!entry.is_regular_file())
@@ -1011,7 +958,7 @@ int stage2_dict(const std::string fdir)
 
         keyfile.close();
     }
-    outfile << "fab" << std::endl;
+    outfile << "level_3" << std::endl;
     for (const auto &entry : std::filesystem::directory_iterator(fabkeys))
     {
         if (!entry.is_regular_file())
@@ -1038,9 +985,12 @@ int stage2_dict(const std::string fdir)
 int main()
 {
     std::string host_key = {0};
-    std::string fdir = "../authen_key_stage2/";
+    std::string fdir = "../authen_key_stage2_a1/";
 
     // random_key(host_key, fdir);
+    // stage2_dict(fdir);
+    // Hashkey_json();
     stage2_dict(fdir);
+
     return 0;
 }

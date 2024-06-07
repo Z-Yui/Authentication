@@ -4,9 +4,9 @@ project(crypto)
 # SET(OPENSSL_DIR /home/psf/work_space/openssl-1.1.1v)
 # SET(OPENSSL_DIR /home/psf/work_space/openssl-1.1.0l)
 # SET(OPENSSL_DIR ./openssl-3.0.10)
-SET(OPENSSL_LIB ${CMAKE_CURRENT_SOURCE_DIR}/lib_x86)
+SET(OPENSSL_LIB ${CMAKE_CURRENT_SOURCE_DIR}/utils/lib_x86)
 
-INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/include_x86
+INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/utils/include_x86
 )
 
 
@@ -19,8 +19,8 @@ INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/include_x86
 
 
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
-# SET(CMAKE_BUILD_TYPE "Release")
-SET(CMAKE_BUILD_TYPE "Debug")
+SET(CMAKE_BUILD_TYPE "Release")
+# SET(CMAKE_BUILD_TYPE "Debug")
 
 
 LINK_DIRECTORIES(
@@ -29,7 +29,7 @@ LINK_DIRECTORIES(
     ${OPENSSL_LIB}
 )
 
-file(GLOB_RECURSE SRCS ${CMAKE_CURRENT_SOURCE_DIR}/crypt.cpp ${CMAKE_CURRENT_SOURCE_DIR}/src/cJSON.c)
+file(GLOB_RECURSE SRCS ${CMAKE_CURRENT_SOURCE_DIR}/crypt.cpp ${CMAKE_CURRENT_SOURCE_DIR}/utils/src/cJSON.c)
 
 add_executable(${PROJECT_NAME} ${SRCS})
 target_link_libraries(${PROJECT_NAME} ${CMAKE_DL_LIBS} -lcrypto -lssl -lpthread -lm)

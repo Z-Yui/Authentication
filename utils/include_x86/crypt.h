@@ -21,13 +21,16 @@
 
 #define KEY_LENGTH 2048 // 密钥长度
 
-#define STAGE1_ADB_KEY_FILE "./authen_key_stage1/adb/"   // 公钥路径
-#define STAGE1_FAB_KEY_FILE "./authen_key_stage1/fab/"   // 公钥路径
-#define STAGE1_UPFW_KEY_FILE "./authen_key_stage1/upfw/" // 公钥路径
+#define STAGE1_LEVEL2_KEY_FILE "../authen_key_stage1_a1/level_2/" // 公钥路径
+#define STAGE1_LEVEL3_KEY_FILE "../authen_key_stage1_a1/level_3/" // 公钥路径
+#define STAGE1_LEVEL1_KEY_FILE "../authen_key_stage1_a1/level_1/" // 公钥路径
 
-#define STAGE2_ADB_KEY_FILE "./authen_key_stage1/adb/"   // 公钥路径
-#define STAGE2_FAB_KEY_FILE "./authen_key_stage1/fab/"   // 公钥路径
-#define STAGE2_UPFW_KEY_FILE "./authen_key_stage1/upfw/" // 公钥路径
+#define STAGE2_LEVEL2_KEY_FILE "../authen_key_stage2_a1/level_2/" // 公钥路径
+#define STAGE2_LEVEL3_KEY_FILE "../authen_key_stage2_a1/level_3/" // 公钥路径
+#define STAGE2_LEVEL1_KEY_FILE "../authen_key_stage2_a1/level_1/" // 公钥路径
+
+#define PLAINTEXT "lm_liam:" // when you modify this, please modify PLAINTEXT_LENGTH in the same time
+#define PLAINTEXT_LENGTH 10  //
 
 /* 填充模式 */
 enum PaddingModel
@@ -41,9 +44,13 @@ static void padding(std::string &src, int alignSize, PaddingModel mode);
 static void unpadding(std::string &src);
 
 /*-------------------------RSA 算法加解密实现--------------------------*/
-std::string RsaEncrypt(const std::string &clear_text, const std::string &key, bool is_BT, bool isPub);
+int RsaEncrypt(const std::string &clear_text, const std::string &key, std::string &cipher_mesg);
 
-std::string RsaDecrypt(const std::string &cipher_text, const std::string &key, bool is_BT, bool isPri);
+int RsaDecrypt(const std::string &cipher_text, const std::string &key, std::string &plain_mesg);
+
+int RSASign(const std::string &message, std::string &dgst_sign, const std::string &prikey);
+
+int RSAVerify(const std::string &message, const std::string &dgst_sign, const std::string &pubkey);
 
 void GenerateRSAKey(std::string &out_pub_key, std::string &out_pri_key, const char *name);
 
